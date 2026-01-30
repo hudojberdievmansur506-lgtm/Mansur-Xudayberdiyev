@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import * as LucideIcons from 'lucide-react';
 import { 
   Sparkles, Download, RotateCcw, ChevronLeft, ChevronRight, 
@@ -25,7 +25,7 @@ const App: React.FC = () => {
   const [imageGenerating, setImageGenerating] = useState<Record<number, boolean>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Rasmlar hali yuklanayotganini tekshirish
+  // Rasmlar hali yuklanayotganini tekshirish (yuklab olish tugmasini bloklash uchun)
   const isAnyImageGenerating = Object.values(imageGenerating).some(v => v) || (state === AppState.PREVIEW && !coverImageUrl);
 
   const processContent = async (text: string) => {
@@ -40,7 +40,7 @@ const App: React.FC = () => {
       // 1. Muqova rasmini yaratish
       generateImage(result.coverImagePrompt).then(img => {
         setCoverImageUrl(img);
-      });
+      }).catch(() => setCoverImageUrl(null));
 
       // 2. Har bir slayd uchun rasmlarni fon rejimida yaratish
       result.slides.forEach(async (slide, index) => {
@@ -55,6 +55,8 @@ const App: React.FC = () => {
               return { ...prev, slides: updatedSlides };
             });
           }
+        } catch (err) {
+          console.error("Slide image generation failed", err);
         } finally {
           setImageGenerating(prev => ({ ...prev, [index]: false }));
         }
@@ -81,7 +83,7 @@ const App: React.FC = () => {
         await processContent(text);
       }
     } catch (err) {
-      setError('Faylni o\'qishda xatolik. Faqat .docx yoki .txt fayllarni qo\'llab-quvvatlaymiz.');
+      setError('Faylni o\'qishda xatolik. Faqat .docx yoki .txt fayllarni yuklang.');
       setState(AppState.ERROR);
     }
   };
@@ -93,29 +95,32 @@ const App: React.FC = () => {
     pres.layout = 'LAYOUT_16x9';
     const themeColor = presentation.themeColor.replace('#', '');
 
-    // Muqova
+    // Title Slide
     const titleSlide = pres.addSlide();
     if (coverImageUrl) titleSlide.addImage({ data: coverImageUrl, x: 0, y: 0, w: '100%', h: '100%' });
     titleSlide.addShape(pres.ShapeType.rect, { x: 0, y: 0, w: '100%', h: '100%', fill: { color: '000000', transparency: 60 } });
-    titleSlide.addText(presentation.mainTitle, { x: 1, y: 2.5, w: '80%', fontSize: 50, bold: true, color: 'FFFFFF', align: 'center', fontFace: 'Arial' });
-    titleSlide.addText(presentation.subtitle, { x: 1, y: 4, w: '80%', fontSize: 24, color: 'CBD5E1', align: 'center' });
+    titleSlide.addText(presentation.mainTitle, { x: 0.5, y: 2.2, w: 9, fontSize: 48, bold: true, color: 'FFFFFF', align: 'center', fontFace: 'Arial' });
+    titleSlide.addText(presentation.subtitle, { x: 0.5, y: 3.8, w: 9, fontSize: 24, color: 'CBD5E1', align: 'center' });
 
-    // Slaydlar
+    // Content Slides
     presentation.slides.forEach((slide) => {
       const s = pres.addSlide();
-      
-      if (slide.imageUrl) {
-        s.addImage({ data: slide.imageUrl, x: 5.5, y: 1.2, w: 4, h: 4 });
-      }
+      const hasImage = !!slide.imageUrl;
 
-      s.addText(slide.title, { x: 0.5, y: 0.4, w: '90%', fontSize: 30, bold: true, color: themeColor });
+      s.addText(slide.title, { x: 0.5, y: 0.4, w: '90%', fontSize: 32, bold: true, color: themeColor });
       s.addShape(pres.ShapeType.line, { x: 0.5, y: 1, w: 9, h: 0, line: { color: themeColor, width: 2 } });
 
-      const bullets = slide.content.map(p => ({ text: p.text, options: { bullet: true, fontSize: 18, color: '334155' } }));
-      s.addText(bullets, { x: 0.5, y: 1.5, w: 4.5, h: 4, valign: 'top' });
+      if (hasImage) {
+        s.addImage({ data: slide.imageUrl!, x: 5.5, y: 1.5, w: 4, h: 3.5 });
+        const bullets = slide.content.map(p => ({ text: p.text, options: { bullet: true, fontSize: 16, color: '334155' } }));
+        s.addText(bullets, { x: 0.5, y: 1.5, w: 4.8, h: 3.5, valign: 'top' });
+      } else {
+        const bullets = slide.content.map(p => ({ text: p.text, options: { bullet: true, fontSize: 18, color: '334155' } }));
+        s.addText(bullets, { x: 0.5, y: 1.5, w: 9, h: 3.5, valign: 'top' });
+      }
     });
 
-    pres.writeFile({ fileName: `${presentation.mainTitle.replace(/\s+/g, '_')}.pptx` });
+    pres.writeFile({ fileName: `${presentation.mainTitle.replace(/\s+/g, '_')}_Presentation.pptx` });
   }, [presentation, coverImageUrl, isAnyImageGenerating]);
 
   const reset = () => {
@@ -124,10 +129,12 @@ const App: React.FC = () => {
     setCoverImageUrl(null);
     setError(null);
     setImageGenerating({});
+    setCurrentSlideIndex(0);
   };
 
   return (
     <div className="min-h-screen bg-[#F8FAFF] text-slate-900 flex flex-col font-['Plus_Jakarta_Sans']">
+      {/* Background Decor */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none -z-10">
         <div className="absolute top-0 right-0 w-1/2 h-1/2 bg-indigo-100/30 blur-[120px] rounded-full translate-x-1/4 -translate-y-1/4" />
         <div className="absolute bottom-0 left-0 w-1/3 h-1/3 bg-blue-100/20 blur-[100px] rounded-full -translate-x-1/4 translate-y-1/4" />
@@ -150,7 +157,7 @@ const App: React.FC = () => {
                 className={`px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all shadow-xl active:scale-95 ${isAnyImageGenerating ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-slate-900 text-white hover:bg-indigo-600 shadow-indigo-100'}`}
               >
                 {isAnyImageGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                {isAnyImageGenerating ? "Tayyorlanmoqda..." : "PPTX Yuklash"}
+                {isAnyImageGenerating ? "Rasmlar yuklanmoqda..." : "PPTX Yuklash"}
               </button>
             </div>
           )}
@@ -162,13 +169,13 @@ const App: React.FC = () => {
           <div className="max-w-4xl text-center space-y-12 animate-in fade-in slide-in-from-bottom-8 duration-1000">
             <div className="space-y-6">
               <div className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-full text-xs font-bold uppercase tracking-widest">
-                <Layers className="w-4 h-4" /> Professional AI Designer
+                <Layers className="w-4 h-4" /> Professional AI Presentation
               </div>
               <h2 className="text-6xl md:text-8xl font-black text-slate-900 leading-[0.9] tracking-tighter">
-                Matnni <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-violet-600">Vizual San'atga</span> aylantiring.
+                Fikringizni <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-violet-600">Vizual</span> qiling.
               </h2>
               <p className="text-xl text-slate-500 max-w-2xl mx-auto font-medium">
-                Word hujjatini yuklang yoki mavzu bering. AI har bir slayd uchun maxsus diagrammalar, ikonalar va <span className="text-indigo-600 font-bold">realistik rasmlar</span> yaratadi.
+                Word hujjatini yuklang yoki mavzu bering. AI har bir slayd uchun maxsus dizayn va <span className="text-indigo-600 font-bold">professional rasmlar</span> yaratib beradi.
               </p>
             </div>
 
@@ -178,13 +185,13 @@ const App: React.FC = () => {
                 <div className="space-y-4">
                   <div className="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center mx-auto group-hover:scale-110 transition-transform"><Upload className="w-8 h-8 text-indigo-600" /></div>
                   <h3 className="text-xl font-bold text-slate-800">Word yuklash</h3>
-                  <p className="text-sm text-slate-400">.docx yoki .txt fayllar</p>
+                  <p className="text-sm text-slate-400">.docx yoki .txt formatlari</p>
                 </div>
               </div>
-              <div onClick={() => { const t = prompt("Mavzu:"); if(t) processContent(t); }} className="bg-white border-2 border-slate-100 rounded-[32px] p-12 flex flex-col justify-center items-center text-center space-y-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer group">
+              <div onClick={() => { const t = prompt("Mavzu kiriting:"); if(t) processContent(t); }} className="bg-white border-2 border-slate-100 rounded-[32px] p-12 flex flex-col justify-center items-center text-center space-y-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer group">
                 <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform"><FileText className="w-8 h-8 text-slate-400" /></div>
-                <h3 className="text-xl font-bold text-slate-800">Mavzu bilan boshlash</h3>
-                <p className="text-sm text-slate-400">G'oyani matnga aylantiring</p>
+                <h3 className="text-xl font-bold text-slate-800">Mavzu yozish</h3>
+                <p className="text-sm text-slate-400">Tezkor generatsiya qilish</p>
               </div>
             </div>
           </div>
@@ -198,32 +205,52 @@ const App: React.FC = () => {
                 <div className="absolute inset-0 flex items-center justify-center"><ImageIcon className="w-10 h-10 text-indigo-500 animate-pulse" /></div>
              </div>
              <div className="space-y-2">
-                <h3 className="text-3xl font-black text-slate-800">{state === AppState.READING_FILE ? "Fayl o'qilmoqda..." : "Slaydlar chizilmoqda..."}</h3>
-                <p className="text-slate-400 font-medium">AI har bir slayd uchun original tasvirlar yaratmoqda</p>
+                <h3 className="text-3xl font-black text-slate-800">{state === AppState.READING_FILE ? "Fayl o'qilmoqda..." : "Slaydlar tayyorlanmoqda..."}</h3>
+                <p className="text-slate-400 font-medium">AI har bir slayd uchun original va yuqori sifatli rasmlar chizmoqda</p>
              </div>
           </div>
         )}
 
         {state === AppState.PREVIEW && presentation && (
           <div className="w-full flex flex-col lg:flex-row gap-8 animate-in fade-in slide-in-from-bottom-8 duration-700">
-            <div className="lg:w-1/4 space-y-4 max-h-[75vh] overflow-y-auto pr-2 custom-scrollbar no-scrollbar lg:block hidden">
-              <div onClick={() => setCurrentSlideIndex(0)} className={`relative aspect-video rounded-2xl cursor-pointer overflow-hidden border-4 transition-all ${currentSlideIndex === 0 ? 'border-indigo-600 shadow-2xl scale-[1.02]' : 'border-white'}`}>
-                {coverImageUrl ? <img src={coverImageUrl} className="w-full h-full object-cover" /> : <div className="bg-slate-900 w-full h-full" />}
-                <div className="absolute inset-0 bg-black/40 flex items-center justify-center p-4"><p className="text-white text-[10px] font-bold uppercase text-center">{presentation.mainTitle}</p></div>
+            {/* Sidebar Thumbnails */}
+            <div className="lg:w-1/4 space-y-4 max-h-[75vh] overflow-y-auto pr-2 custom-scrollbar lg:block hidden">
+              <div 
+                onClick={() => setCurrentSlideIndex(0)} 
+                className={`relative aspect-video rounded-2xl cursor-pointer overflow-hidden border-4 transition-all ${currentSlideIndex === 0 ? 'border-indigo-600 shadow-2xl scale-[1.02]' : 'border-white hover:border-slate-100'}`}
+              >
+                {coverImageUrl ? <img src={coverImageUrl} className="w-full h-full object-cover" alt="cover" /> : <div className="bg-slate-900 w-full h-full flex items-center justify-center"><Loader2 className="animate-spin text-white/20" /></div>}
+                <div className="absolute inset-0 bg-black/40 flex flex-col justify-end p-3">
+                  <p className="text-white text-[10px] font-black uppercase tracking-widest opacity-70">Muqova</p>
+                  <p className="text-white text-xs font-bold truncate">{presentation.mainTitle}</p>
+                </div>
               </div>
               {presentation.slides.map((slide, idx) => (
-                <div key={idx} onClick={() => setCurrentSlideIndex(idx + 1)} className={`relative aspect-video bg-white rounded-2xl cursor-pointer overflow-hidden border-4 transition-all ${currentSlideIndex === idx + 1 ? 'border-indigo-600 shadow-2xl scale-[1.02]' : 'border-white hover:border-slate-200'}`}>
-                   {slide.imageUrl ? <img src={slide.imageUrl} className="w-full h-full object-cover" /> : <div className="bg-slate-100 w-full h-full flex items-center justify-center">{imageGenerating[idx] ? <Loader2 className="animate-spin text-indigo-400" /> : <ImageIcon className="text-slate-300" />}</div>}
-                   <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/60 p-2"><p className="text-white text-[10px] font-bold truncate">{slide.title}</p></div>
+                <div 
+                  key={idx} 
+                  onClick={() => setCurrentSlideIndex(idx + 1)} 
+                  className={`relative aspect-video bg-white rounded-2xl cursor-pointer overflow-hidden border-4 transition-all ${currentSlideIndex === idx + 1 ? 'border-indigo-600 shadow-2xl scale-[1.02]' : 'border-white hover:border-slate-200'}`}
+                >
+                   {slide.imageUrl ? (
+                     <img src={slide.imageUrl} className="w-full h-full object-cover" alt={`slide ${idx + 1}`} />
+                   ) : (
+                     <div className="w-full h-full flex items-center justify-center bg-slate-50">
+                        {imageGenerating[idx] ? <Loader2 className="animate-spin text-indigo-400 w-5 h-5" /> : <ImageIcon className="text-slate-200 w-6 h-6" />}
+                     </div>
+                   )}
+                   <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 to-transparent p-2">
+                     <p className="text-white text-[10px] font-bold truncate">{idx + 1}. {slide.title}</p>
+                   </div>
                 </div>
               ))}
             </div>
 
+            {/* Main Preview Slide */}
             <div className="lg:w-3/4 space-y-6">
-              <div className="relative aspect-video bg-white shadow-[0_40px_80px_-15px_rgba(0,0,0,0.1)] rounded-[48px] overflow-hidden border border-slate-100 group">
+              <div className="relative aspect-video bg-white shadow-[0_50px_100px_-20px_rgba(0,0,0,0.1)] rounded-[48px] overflow-hidden border border-slate-100">
                 {currentSlideIndex === 0 ? (
                   <div className="relative w-full h-full flex flex-col justify-center items-center text-center p-12 md:p-24 overflow-hidden">
-                    {coverImageUrl && <img src={coverImageUrl} className="absolute inset-0 w-full h-full object-cover brightness-50 animate-in fade-in duration-1000" />}
+                    {coverImageUrl && <img src={coverImageUrl} className="absolute inset-0 w-full h-full object-cover brightness-[0.4] animate-in fade-in duration-1000 scale-105" alt="cover bg" />}
                     <div className="relative z-10 space-y-8">
                        <h1 className="text-4xl md:text-7xl font-black text-white leading-tight tracking-tighter drop-shadow-2xl">{presentation.mainTitle}</h1>
                        <div className="h-1.5 w-24 bg-indigo-500 mx-auto rounded-full" />
@@ -232,32 +259,45 @@ const App: React.FC = () => {
                   </div>
                 ) : (
                   <div className="w-full h-full flex flex-col lg:flex-row">
+                    {/* Content Section */}
                     <div className="lg:w-3/5 p-12 md:p-16 flex flex-col justify-center space-y-8">
                        <div className="space-y-3">
-                          <p className="text-indigo-600 font-black text-sm uppercase tracking-[0.2em]">SLAYD {currentSlideIndex}</p>
-                          <h2 className="text-4xl font-black text-slate-900 tracking-tight">{presentation.slides[currentSlideIndex - 1].title}</h2>
+                          <p className="text-indigo-600 font-black text-sm uppercase tracking-[0.2em] flex items-center gap-2">
+                            <span className="w-8 h-0.5 bg-indigo-600"></span>
+                            SLAYD {currentSlideIndex}
+                          </p>
+                          <h2 className="text-4xl font-black text-slate-900 tracking-tight leading-tight">
+                            {presentation.slides[currentSlideIndex - 1].title}
+                          </h2>
                        </div>
                        <ul className="space-y-5">
                           {presentation.slides[currentSlideIndex - 1].content.map((item, i) => (
                             <li key={i} className="flex items-start gap-4 animate-in slide-in-from-left duration-500" style={{ transitionDelay: `${i * 100}ms` }}>
-                               <div className="mt-1.5 w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center shrink-0 shadow-sm"><IconRenderer name={item.icon} className="w-5 h-5" /></div>
+                               <div className="mt-1.5 w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center shrink-0 shadow-sm">
+                                 <IconRenderer name={item.icon} className="w-5 h-5" />
+                               </div>
                                <p className="text-lg md:text-xl font-semibold text-slate-700 leading-relaxed">{item.text}</p>
                             </li>
                           ))}
                        </ul>
                     </div>
-                    <div className="lg:w-2/5 relative h-full bg-slate-50 border-l border-slate-100">
+                    {/* Visual Section */}
+                    <div className="lg:w-2/5 relative h-full bg-slate-50/50 border-l border-slate-100 overflow-hidden">
                        {presentation.slides[currentSlideIndex - 1].imageUrl ? (
-                         <img src={presentation.slides[currentSlideIndex - 1].imageUrl} className="w-full h-full object-cover animate-in fade-in zoom-in-95 duration-1000" alt="slide visual" />
+                         <img 
+                           src={presentation.slides[currentSlideIndex - 1].imageUrl} 
+                           className="w-full h-full object-cover animate-in fade-in zoom-in-95 duration-1000" 
+                           alt="visual" 
+                         />
                        ) : (
-                         <div className="w-full h-full flex flex-col items-center justify-center text-slate-300 gap-4">
+                         <div className="w-full h-full flex flex-col items-center justify-center text-slate-300 gap-4 bg-slate-50">
                             {imageGenerating[currentSlideIndex - 1] ? (
                               <>
                                 <Loader2 className="w-12 h-12 animate-spin text-indigo-400" />
-                                <p className="text-sm font-bold animate-pulse text-indigo-400">Rasm yaratilmoqda...</p>
+                                <p className="text-sm font-bold animate-pulse text-indigo-400">Rasm generatsiya qilinmoqda...</p>
                               </>
                             ) : (
-                              <ImageIcon className="w-16 h-16 opacity-20" />
+                              <ImageIcon className="w-16 h-16 opacity-10" />
                             )}
                          </div>
                        )}
@@ -265,36 +305,48 @@ const App: React.FC = () => {
                   </div>
                 )}
 
+                {/* Navigation Bar */}
                 <div className="absolute inset-x-0 bottom-10 flex items-center justify-between px-10">
-                   <button onClick={() => setCurrentSlideIndex(p => Math.max(0, p - 1))} disabled={currentSlideIndex === 0} className="p-4 bg-white/90 backdrop-blur shadow-2xl rounded-2xl hover:bg-white disabled:opacity-0 transition-all active:scale-90 border border-slate-200">
+                   <button 
+                    onClick={() => setCurrentSlideIndex(p => Math.max(0, p - 1))} 
+                    disabled={currentSlideIndex === 0} 
+                    className="p-4 bg-white/90 backdrop-blur shadow-2xl rounded-2xl hover:bg-white disabled:opacity-0 transition-all active:scale-90 border border-slate-200"
+                   >
                     <ChevronLeft className="w-6 h-6 text-slate-800" />
                    </button>
-                   <div className="px-8 py-3 bg-slate-900/90 backdrop-blur shadow-2xl text-white rounded-full font-black text-sm tracking-widest">
-                    {currentSlideIndex + 1} / {presentation.slides.length + 1}
+                   <div className="px-8 py-3 bg-slate-900/90 backdrop-blur shadow-2xl text-white rounded-full font-black text-xs tracking-widest flex items-center gap-2">
+                    <span className="text-indigo-400">{currentSlideIndex + 1}</span> / {presentation.slides.length + 1}
                    </div>
-                   <button onClick={() => setCurrentSlideIndex(p => Math.min(presentation.slides.length, p + 1))} disabled={currentSlideIndex === presentation.slides.length} className="p-4 bg-white/90 backdrop-blur shadow-2xl rounded-2xl hover:bg-white disabled:opacity-0 transition-all active:scale-90 border border-slate-200">
+                   <button 
+                    onClick={() => setCurrentSlideIndex(p => Math.min(presentation.slides.length, p + 1))} 
+                    disabled={currentSlideIndex === presentation.slides.length} 
+                    className="p-4 bg-white/90 backdrop-blur shadow-2xl rounded-2xl hover:bg-white disabled:opacity-0 transition-all active:scale-90 border border-slate-200"
+                   >
                     <ChevronRight className="w-6 h-6 text-slate-800" />
                    </button>
                 </div>
               </div>
 
+              {/* Action Area */}
               <div className="flex flex-col sm:flex-row items-center justify-between p-8 bg-white border border-slate-200 rounded-[40px] shadow-sm gap-6">
                  <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center"><CheckCircle2 className="w-8 h-8" /></div>
+                    <div className="w-14 h-14 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0">
+                      <CheckCircle2 className="w-8 h-8" />
+                    </div>
                     <div>
-                      <h4 className="font-black text-slate-900 text-lg">Taqdimot tayyor!</h4>
-                      <p className="text-sm text-slate-400 font-medium">Barcha slaydlar optimallashtirildi.</p>
+                      <h4 className="font-black text-slate-900 text-lg">Hammasi tayyor!</h4>
+                      <p className="text-sm text-slate-400 font-medium">Barcha {presentation.slides.length + 1} ta slayd muvaffaqiyatli yaratildi.</p>
                     </div>
                  </div>
                  <div className="flex gap-4 w-full sm:w-auto">
-                    <button onClick={reset} className="flex-1 sm:flex-none px-8 py-4 bg-slate-50 text-slate-600 rounded-2xl font-bold hover:bg-slate-100 transition-all">Yangi g'oya</button>
+                    <button onClick={reset} className="flex-1 sm:flex-none px-8 py-4 bg-slate-50 text-slate-600 rounded-2xl font-bold hover:bg-slate-100 transition-all">Qaytadan boshlash</button>
                     <button 
                       onClick={downloadPPTX} 
                       disabled={isAnyImageGenerating}
-                      className={`flex-1 sm:flex-none px-10 py-4 rounded-2xl font-black text-lg transition-all active:scale-95 flex items-center justify-center gap-3 ${isAnyImageGenerating ? 'bg-slate-100 text-slate-400' : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-2xl shadow-indigo-100'}`}
+                      className={`flex-1 sm:flex-none px-10 py-4 rounded-2xl font-black text-lg transition-all active:scale-95 flex items-center justify-center gap-3 ${isAnyImageGenerating ? 'bg-slate-100 text-slate-300' : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-2xl shadow-indigo-100'}`}
                     >
                       {isAnyImageGenerating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
-                      {isAnyImageGenerating ? "Kutilmoqda..." : "PPTX Yuklash"}
+                      {isAnyImageGenerating ? "Rasmlarni kuting..." : "Eksport (PPTX)"}
                     </button>
                  </div>
               </div>
@@ -303,13 +355,13 @@ const App: React.FC = () => {
         )}
 
         {state === AppState.ERROR && (
-          <div className="text-center space-y-8">
+          <div className="text-center space-y-8 animate-in shake duration-500">
             <div className="w-24 h-24 bg-red-50 text-red-500 rounded-[32px] flex items-center justify-center mx-auto shadow-inner"><AlertCircle className="w-12 h-12" /></div>
             <div className="space-y-3">
               <h3 className="text-3xl font-black text-slate-800">Xatolik yuz berdi</h3>
               <p className="text-lg text-slate-400 font-medium max-w-md mx-auto">{error}</p>
             </div>
-            <button onClick={reset} className="px-10 py-4 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all">Qayta urinish</button>
+            <button onClick={reset} className="px-10 py-4 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all">Bosh sahifaga qaytish</button>
           </div>
         )}
       </main>
@@ -318,11 +370,11 @@ const App: React.FC = () => {
         <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-6">
            <div className="flex items-center gap-2">
               <Sparkles className="text-indigo-600 w-5 h-5" />
-              <span className="font-bold text-slate-800">PresenAI Platform &bull; {new Date().getFullYear()}</span>
+              <span className="font-bold text-slate-800 tracking-tight">PresenAI &bull; {new Date().getFullYear()}</span>
            </div>
            <div className="flex gap-8 text-sm font-bold text-slate-400">
-              <a href="#" className="hover:text-indigo-600 transition-colors">Telegram</a>
-              <a href="#" className="hover:text-indigo-600 transition-colors">Dizayn qoidalari</a>
+              <a href="#" className="hover:text-indigo-600 transition-colors">Netlify Status</a>
+              <a href="#" className="hover:text-indigo-600 transition-colors">Teglar</a>
               <a href="#" className="hover:text-indigo-600 transition-colors">Yordam</a>
            </div>
         </div>
@@ -332,6 +384,12 @@ const App: React.FC = () => {
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #E2E8F0; border-radius: 10px; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
+        @keyframes shake {
+          0%, 100% { transform: translateX(0); }
+          25% { transform: translateX(-10px); }
+          75% { transform: translateX(10px); }
+        }
+        .animate-shake { animation: shake 0.5s ease-in-out; }
       `}</style>
     </div>
   );
