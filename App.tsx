@@ -25,8 +25,12 @@ const App: React.FC = () => {
   const [imageGenerating, setImageGenerating] = useState<Record<number, boolean>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Rasmlar hali yuklanayotganini tekshirish
+  const isAnyImageGenerating = Object.values(imageGenerating).some(v => v) || (state === AppState.PREVIEW && !coverImageUrl);
+
   const processContent = async (text: string) => {
     setState(AppState.GENERATING);
+    setError(null);
     try {
       const result = await generatePresentationContent(text);
       setPresentation(result);
@@ -34,26 +38,31 @@ const App: React.FC = () => {
       setCurrentSlideIndex(0);
 
       // 1. Muqova rasmini yaratish
-      const coverImg = await generateImage(result.coverImagePrompt);
-      setCoverImageUrl(coverImg);
+      generateImage(result.coverImagePrompt).then(img => {
+        setCoverImageUrl(img);
+      });
 
       // 2. Har bir slayd uchun rasmlarni fon rejimida yaratish
       result.slides.forEach(async (slide, index) => {
         setImageGenerating(prev => ({ ...prev, [index]: true }));
-        const slideImg = await generateImage(slide.description || slide.title);
-        if (slideImg) {
-          setPresentation(prev => {
-            if (!prev) return null;
-            const updatedSlides = [...prev.slides];
-            updatedSlides[index] = { ...updatedSlides[index], imageUrl: slideImg };
-            return { ...prev, slides: updatedSlides };
-          });
+        try {
+          const slideImg = await generateImage(slide.description || slide.title);
+          if (slideImg) {
+            setPresentation(prev => {
+              if (!prev) return null;
+              const updatedSlides = [...prev.slides];
+              updatedSlides[index] = { ...updatedSlides[index], imageUrl: slideImg };
+              return { ...prev, slides: updatedSlides };
+            });
+          }
+        } finally {
+          setImageGenerating(prev => ({ ...prev, [index]: false }));
         }
-        setImageGenerating(prev => ({ ...prev, [index]: false }));
       });
 
     } catch (err) {
-      setError('Taqdimot tayyorlashda xatolik yuz berdi.');
+      console.error(err);
+      setError('Taqdimot tayyorlashda xatolik yuz berdi. Iltimos, qaytadan urinib ko\'ring.');
       setState(AppState.ERROR);
     }
   };
@@ -72,13 +81,14 @@ const App: React.FC = () => {
         await processContent(text);
       }
     } catch (err) {
-      setError('Faylni o\'qishda xatolik.');
+      setError('Faylni o\'qishda xatolik. Faqat .docx yoki .txt fayllarni qo\'llab-quvvatlaymiz.');
       setState(AppState.ERROR);
     }
   };
 
   const downloadPPTX = useCallback(() => {
-    if (!presentation) return;
+    if (!presentation || isAnyImageGenerating) return;
+    
     const pres = new pptxgen();
     pres.layout = 'LAYOUT_16x9';
     const themeColor = presentation.themeColor.replace('#', '');
@@ -87,14 +97,13 @@ const App: React.FC = () => {
     const titleSlide = pres.addSlide();
     if (coverImageUrl) titleSlide.addImage({ data: coverImageUrl, x: 0, y: 0, w: '100%', h: '100%' });
     titleSlide.addShape(pres.ShapeType.rect, { x: 0, y: 0, w: '100%', h: '100%', fill: { color: '000000', transparency: 60 } });
-    titleSlide.addText(presentation.mainTitle, { x: 1, y: 2.5, w: '80%', fontSize: 50, bold: true, color: 'FFFFFF', align: 'center' });
+    titleSlide.addText(presentation.mainTitle, { x: 1, y: 2.5, w: '80%', fontSize: 50, bold: true, color: 'FFFFFF', align: 'center', fontFace: 'Arial' });
     titleSlide.addText(presentation.subtitle, { x: 1, y: 4, w: '80%', fontSize: 24, color: 'CBD5E1', align: 'center' });
 
     // Slaydlar
     presentation.slides.forEach((slide) => {
       const s = pres.addSlide();
       
-      // Slayd rasmini chapga yoki o'ngga qo'yish
       if (slide.imageUrl) {
         s.addImage({ data: slide.imageUrl, x: 5.5, y: 1.2, w: 4, h: 4 });
       }
@@ -106,8 +115,8 @@ const App: React.FC = () => {
       s.addText(bullets, { x: 0.5, y: 1.5, w: 4.5, h: 4, valign: 'top' });
     });
 
-    pres.writeFile({ fileName: `${presentation.mainTitle}.pptx` });
-  }, [presentation, coverImageUrl]);
+    pres.writeFile({ fileName: `${presentation.mainTitle.replace(/\s+/g, '_')}.pptx` });
+  }, [presentation, coverImageUrl, isAnyImageGenerating]);
 
   const reset = () => {
     setState(AppState.IDLE);
@@ -119,7 +128,6 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#F8FAFF] text-slate-900 flex flex-col font-['Plus_Jakarta_Sans']">
-      {/* Background Decor */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none -z-10">
         <div className="absolute top-0 right-0 w-1/2 h-1/2 bg-indigo-100/30 blur-[120px] rounded-full translate-x-1/4 -translate-y-1/4" />
         <div className="absolute bottom-0 left-0 w-1/3 h-1/3 bg-blue-100/20 blur-[100px] rounded-full -translate-x-1/4 translate-y-1/4" />
@@ -136,8 +144,13 @@ const App: React.FC = () => {
           {state === AppState.PREVIEW && (
             <div className="flex items-center gap-4">
               <button onClick={reset} className="p-2.5 text-slate-500 hover:bg-slate-100 rounded-xl transition-all"><RotateCcw className="w-5 h-5" /></button>
-              <button onClick={downloadPPTX} className="px-6 py-3 bg-slate-900 text-white rounded-xl font-bold flex items-center gap-2 hover:bg-indigo-600 transition-all shadow-xl shadow-indigo-100">
-                <Download className="w-4 h-4" /> PPTX Yuklash
+              <button 
+                onClick={downloadPPTX} 
+                disabled={isAnyImageGenerating}
+                className={`px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all shadow-xl active:scale-95 ${isAnyImageGenerating ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-slate-900 text-white hover:bg-indigo-600 shadow-indigo-100'}`}
+              >
+                {isAnyImageGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                {isAnyImageGenerating ? "Tayyorlanmoqda..." : "PPTX Yuklash"}
               </button>
             </div>
           )}
@@ -149,13 +162,13 @@ const App: React.FC = () => {
           <div className="max-w-4xl text-center space-y-12 animate-in fade-in slide-in-from-bottom-8 duration-1000">
             <div className="space-y-6">
               <div className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-full text-xs font-bold uppercase tracking-widest">
-                <Layers className="w-4 h-4" /> Zamonaviy AI Dizayn
+                <Layers className="w-4 h-4" /> Professional AI Designer
               </div>
               <h2 className="text-6xl md:text-8xl font-black text-slate-900 leading-[0.9] tracking-tighter">
                 Matnni <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-violet-600">Vizual San'atga</span> aylantiring.
               </h2>
               <p className="text-xl text-slate-500 max-w-2xl mx-auto font-medium">
-                Word hujjatini yuklang. AI har bir slayd uchun maxsus diagrammalar, ikonalar va <span className="text-indigo-600 font-bold">realistik rasmlar</span> yaratadi.
+                Word hujjatini yuklang yoki mavzu bering. AI har bir slayd uchun maxsus diagrammalar, ikonalar va <span className="text-indigo-600 font-bold">realistik rasmlar</span> yaratadi.
               </p>
             </div>
 
@@ -168,7 +181,7 @@ const App: React.FC = () => {
                   <p className="text-sm text-slate-400">.docx yoki .txt fayllar</p>
                 </div>
               </div>
-              <div onClick={() => processContent(prompt("Taqdimot mavzusini kiriting:") || "")} className="bg-white border-2 border-slate-100 rounded-[32px] p-12 flex flex-col justify-center items-center text-center space-y-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer group">
+              <div onClick={() => { const t = prompt("Mavzu:"); if(t) processContent(t); }} className="bg-white border-2 border-slate-100 rounded-[32px] p-12 flex flex-col justify-center items-center text-center space-y-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer group">
                 <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform"><FileText className="w-8 h-8 text-slate-400" /></div>
                 <h3 className="text-xl font-bold text-slate-800">Mavzu bilan boshlash</h3>
                 <p className="text-sm text-slate-400">G'oyani matnga aylantiring</p>
@@ -177,7 +190,7 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {state === AppState.GENERATING && (
+        {(state === AppState.GENERATING || state === AppState.READING_FILE) && (
           <div className="text-center space-y-8 animate-in zoom-in-95 duration-500">
              <div className="relative w-32 h-32 mx-auto">
                 <div className="absolute inset-0 border-4 border-indigo-100 rounded-full"></div>
@@ -185,7 +198,7 @@ const App: React.FC = () => {
                 <div className="absolute inset-0 flex items-center justify-center"><ImageIcon className="w-10 h-10 text-indigo-500 animate-pulse" /></div>
              </div>
              <div className="space-y-2">
-                <h3 className="text-3xl font-black text-slate-800">Slaydlar chizilmoqda...</h3>
+                <h3 className="text-3xl font-black text-slate-800">{state === AppState.READING_FILE ? "Fayl o'qilmoqda..." : "Slaydlar chizilmoqda..."}</h3>
                 <p className="text-slate-400 font-medium">AI har bir slayd uchun original tasvirlar yaratmoqda</p>
              </div>
           </div>
@@ -193,7 +206,6 @@ const App: React.FC = () => {
 
         {state === AppState.PREVIEW && presentation && (
           <div className="w-full flex flex-col lg:flex-row gap-8 animate-in fade-in slide-in-from-bottom-8 duration-700">
-            {/* Sidebar List */}
             <div className="lg:w-1/4 space-y-4 max-h-[75vh] overflow-y-auto pr-2 custom-scrollbar no-scrollbar lg:block hidden">
               <div onClick={() => setCurrentSlideIndex(0)} className={`relative aspect-video rounded-2xl cursor-pointer overflow-hidden border-4 transition-all ${currentSlideIndex === 0 ? 'border-indigo-600 shadow-2xl scale-[1.02]' : 'border-white'}`}>
                 {coverImageUrl ? <img src={coverImageUrl} className="w-full h-full object-cover" /> : <div className="bg-slate-900 w-full h-full" />}
@@ -207,7 +219,6 @@ const App: React.FC = () => {
               ))}
             </div>
 
-            {/* Main Preview */}
             <div className="lg:w-3/4 space-y-6">
               <div className="relative aspect-video bg-white shadow-[0_40px_80px_-15px_rgba(0,0,0,0.1)] rounded-[48px] overflow-hidden border border-slate-100 group">
                 {currentSlideIndex === 0 ? (
@@ -221,7 +232,6 @@ const App: React.FC = () => {
                   </div>
                 ) : (
                   <div className="w-full h-full flex flex-col lg:flex-row">
-                    {/* Content Section */}
                     <div className="lg:w-3/5 p-12 md:p-16 flex flex-col justify-center space-y-8">
                        <div className="space-y-3">
                           <p className="text-indigo-600 font-black text-sm uppercase tracking-[0.2em]">SLAYD {currentSlideIndex}</p>
@@ -236,7 +246,6 @@ const App: React.FC = () => {
                           ))}
                        </ul>
                     </div>
-                    {/* Image Section */}
                     <div className="lg:w-2/5 relative h-full bg-slate-50 border-l border-slate-100">
                        {presentation.slides[currentSlideIndex - 1].imageUrl ? (
                          <img src={presentation.slides[currentSlideIndex - 1].imageUrl} className="w-full h-full object-cover animate-in fade-in zoom-in-95 duration-1000" alt="slide visual" />
@@ -256,7 +265,6 @@ const App: React.FC = () => {
                   </div>
                 )}
 
-                {/* Navigation Buttons */}
                 <div className="absolute inset-x-0 bottom-10 flex items-center justify-between px-10">
                    <button onClick={() => setCurrentSlideIndex(p => Math.max(0, p - 1))} disabled={currentSlideIndex === 0} className="p-4 bg-white/90 backdrop-blur shadow-2xl rounded-2xl hover:bg-white disabled:opacity-0 transition-all active:scale-90 border border-slate-200">
                     <ChevronLeft className="w-6 h-6 text-slate-800" />
@@ -270,23 +278,38 @@ const App: React.FC = () => {
                 </div>
               </div>
 
-              {/* Action Bar */}
               <div className="flex flex-col sm:flex-row items-center justify-between p-8 bg-white border border-slate-200 rounded-[40px] shadow-sm gap-6">
                  <div className="flex items-center gap-4">
                     <div className="w-14 h-14 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center"><CheckCircle2 className="w-8 h-8" /></div>
                     <div>
                       <h4 className="font-black text-slate-900 text-lg">Taqdimot tayyor!</h4>
-                      <p className="text-sm text-slate-400 font-medium">AI hamma rasmlarni chizib bo'ldi.</p>
+                      <p className="text-sm text-slate-400 font-medium">Barcha slaydlar optimallashtirildi.</p>
                     </div>
                  </div>
                  <div className="flex gap-4 w-full sm:w-auto">
                     <button onClick={reset} className="flex-1 sm:flex-none px-8 py-4 bg-slate-50 text-slate-600 rounded-2xl font-bold hover:bg-slate-100 transition-all">Yangi g'oya</button>
-                    <button onClick={downloadPPTX} className="flex-1 sm:flex-none px-10 py-4 bg-indigo-600 text-white rounded-2xl font-black text-lg hover:bg-indigo-700 shadow-2xl shadow-indigo-100 transition-all active:scale-95 flex items-center justify-center gap-3">
-                      <Download className="w-5 h-5" /> PPTX Yuklash
+                    <button 
+                      onClick={downloadPPTX} 
+                      disabled={isAnyImageGenerating}
+                      className={`flex-1 sm:flex-none px-10 py-4 rounded-2xl font-black text-lg transition-all active:scale-95 flex items-center justify-center gap-3 ${isAnyImageGenerating ? 'bg-slate-100 text-slate-400' : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-2xl shadow-indigo-100'}`}
+                    >
+                      {isAnyImageGenerating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
+                      {isAnyImageGenerating ? "Kutilmoqda..." : "PPTX Yuklash"}
                     </button>
                  </div>
               </div>
             </div>
+          </div>
+        )}
+
+        {state === AppState.ERROR && (
+          <div className="text-center space-y-8">
+            <div className="w-24 h-24 bg-red-50 text-red-500 rounded-[32px] flex items-center justify-center mx-auto shadow-inner"><AlertCircle className="w-12 h-12" /></div>
+            <div className="space-y-3">
+              <h3 className="text-3xl font-black text-slate-800">Xatolik yuz berdi</h3>
+              <p className="text-lg text-slate-400 font-medium max-w-md mx-auto">{error}</p>
+            </div>
+            <button onClick={reset} className="px-10 py-4 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all">Qayta urinish</button>
           </div>
         )}
       </main>
@@ -295,7 +318,7 @@ const App: React.FC = () => {
         <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-6">
            <div className="flex items-center gap-2">
               <Sparkles className="text-indigo-600 w-5 h-5" />
-              <span className="font-bold text-slate-800">PresenAI Platform &bull; 2025</span>
+              <span className="font-bold text-slate-800">PresenAI Platform &bull; {new Date().getFullYear()}</span>
            </div>
            <div className="flex gap-8 text-sm font-bold text-slate-400">
               <a href="#" className="hover:text-indigo-600 transition-colors">Telegram</a>
