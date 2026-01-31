@@ -1,10 +1,8 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { Presentation } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
-
 export const generatePresentationContent = async (text: string): Promise<Presentation> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const model = 'gemini-3-flash-preview';
   
   const prompt = `Ushbu matn asosida zamonaviy va professional taqdimot tuzilmasini yarating: "${text.substring(0, 4000)}".
@@ -15,7 +13,7 @@ export const generatePresentationContent = async (text: string): Promise<Present
   3. Layout: Har bir slayd uchun 'steps', 'comparison', 'grid', 'classic' yoki 'process' turlaridan birini tanlang.
   4. Ikonkalar: Har bir band uchun mos Lucide-react ikonka nomini kiriting.
   5. Tasvir Promptlari: Har bir slayd uchun 'description' maydoniga ushbu slayd mavzusiga mos keladigan batafsil inglizcha rasm chizish buyrug'ini yozing.
-  6. Rang: Taqdimot uchun mos hex rang (themeColor) tanlang.`;
+  6. Rang: Taqdimot uchun mos professional hex rang (themeColor) tanlang.`;
 
   const response = await ai.models.generateContent({
     model,
@@ -36,7 +34,7 @@ export const generatePresentationContent = async (text: string): Promise<Present
               properties: {
                 title: { type: Type.STRING },
                 layout: { type: Type.STRING, enum: ['steps', 'comparison', 'grid', 'classic', 'process'] },
-                description: { type: Type.STRING }, // Rasm uchun prompt
+                description: { type: Type.STRING },
                 content: {
                   type: Type.ARRAY,
                   items: {
@@ -59,18 +57,18 @@ export const generatePresentationContent = async (text: string): Promise<Present
   });
 
   const output = response.text;
-  if (!output) throw new Error("AI response error");
+  if (!output) throw new Error("AI response empty");
   
   return JSON.parse(output) as Presentation;
 };
 
 export const generateImage = async (prompt: string): Promise<string | null> => {
   try {
-    const imageAi = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
-    const response = await imageAi.models.generateContent({
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: {
-        parts: [{ text: `Professional, modern, clean, 4k resolution, presentation slide background or illustration for: ${prompt}. Minimalist style.` }]
+        parts: [{ text: `High-quality professional 4k presentation slide illustration for: ${prompt}. Minimalist, clean corporate style.` }]
       }
     });
 
