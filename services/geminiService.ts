@@ -1,8 +1,18 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { Presentation } from "../types";
 
+const getApiKey = () => {
+  const key = process.env.API_KEY;
+  if (!key) {
+    console.error("API_KEY topilmadi. Netlify Environment Variables qismini tekshiring.");
+  }
+  return key || "";
+};
+
 export const generatePresentationContent = async (text: string): Promise<Presentation> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const apiKey = getApiKey();
+  const ai = new GoogleGenAI({ apiKey });
   const model = 'gemini-3-flash-preview';
   
   const prompt = `Ushbu matn asosida zamonaviy va professional taqdimot tuzilmasini yarating: "${text.substring(0, 4000)}".
@@ -64,7 +74,8 @@ export const generatePresentationContent = async (text: string): Promise<Present
 
 export const generateImage = async (prompt: string): Promise<string | null> => {
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const apiKey = getApiKey();
+    const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: {

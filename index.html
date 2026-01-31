@@ -9,27 +9,42 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+      // Brauzerda process.env xatoligini oldini olish uchun
+      window.process = { 
+        env: { 
+          API_KEY: "" // Netlify buni o'zi in'ektsiya qiladi yoki build vaqtida olinadi
+        } 
+      };
+    </script>
     <style>
       body {
         font-family: 'Plus Jakarta Sans', sans-serif;
         background-color: #f8fafc;
+        margin: 0;
+      }
+      #root {
+        min-height: 100vh;
       }
     </style>
-  <script type="importmap">
-{
-  "imports": {
-    "react/": "https://esm.sh/react@^19.2.4/",
-    "react": "https://esm.sh/react@^19.2.4",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
-    "@google/genai": "https://esm.sh/@google/genai@^1.38.0",
-    "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
-    "pptxgenjs": "https://esm.sh/pptxgenjs@^4.0.1",
-    "mammoth": "https://esm.sh/mammoth@^1.8.0"
-  }
-}
-</script>
-</head>
+    <script type="importmap">
+    {
+      "imports": {
+        "react/": "https://esm.sh/react@^19.2.4/",
+        "react": "https://esm.sh/react@^19.2.4",
+        "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+        "react-dom": "https://esm.sh/react-dom@^19.2.4",
+        "@google/genai": "https://esm.sh/@google/genai@^1.38.0",
+        "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
+        "pptxgenjs": "https://esm.sh/pptxgenjs@^4.0.1",
+        "mammoth": "https://esm.sh/mammoth@^1.8.0"
+      }
+    }
+    </script>
+  </head>
   <body>
     <div id="root"></div>
+    <!-- Entry pointni ulash shart -->
+    <script type="module" src="./index.tsx"></script>
   </body>
 </html>
